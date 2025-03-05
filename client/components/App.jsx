@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import logo from "/assets/openai-logomark.svg";
-import EventLog from "./EventLog";
 import SessionControls from "./SessionControls";
-import ToolPanel from "./ToolPanel";
+import ConversationDisplay from "./ConversationDisplay";
 
 export default function App() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [events, setEvents] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [status, setStatus] = useState("idle");
   const [dataChannel, setDataChannel] = useState(null);
   const peerConnection = useRef(null);
   const audioElement = useRef(null);
 
   async function startSession() {
+    setStatus("connecting");
     // Get an ephemeral key from the Fastify server
     const tokenResponse = await fetch("/token");
     const data = await tokenResponse.json();
@@ -26,10 +28,16 @@ export default function App() {
     pc.ontrack = (e) => (audioElement.current.srcObject = e.streams[0]);
 
     // Add local audio track for microphone input in the browser
-    const ms = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-    });
-    pc.addTrack(ms.getTracks()[0]);
+    try {
+      const ms = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      pc.addTrack(ms.getTracks()[0]);
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      setStatus("error");
+      return;
+    }
 
     // Set up data channel for sending and receiving events
     const dc = pc.createDataChannel("oai-events");
@@ -41,22 +49,32 @@ export default function App() {
 
     const baseUrl = "https://api.openai.com/v1/realtime";
     const model = "gpt-4o-realtime-preview-2024-12-17";
-    const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
-      method: "POST",
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${EPHEMERAL_KEY}`,
-        "Content-Type": "application/sdp",
-      },
-    });
+    try {
+      const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
+        method: "POST",
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${EPHEMERAL_KEY}`,
+          "Content-Type": "application/sdp",
+        },
+      });
 
-    const answer = {
-      type: "answer",
-      sdp: await sdpResponse.text(),
-    };
-    await pc.setRemoteDescription(answer);
+      if (!sdpResponse.ok) {
+        throw new Error(`Server response: ${sdpResponse.status}`);
+      }
 
-    peerConnection.current = pc;
+      const answer = {
+        type: "answer",
+        sdp: await sdpResponse.text(),
+      };
+      await pc.setRemoteDescription(answer);
+
+      peerConnection.current = pc;
+    } catch (error) {
+      console.error("Connection error:", error);
+      setStatus("error");
+      return;
+    }
   }
 
   // Stop current session, clean up peer connection and data channel
@@ -65,19 +83,20 @@ export default function App() {
       dataChannel.close();
     }
 
-    peerConnection.current.getSenders().forEach((sender) => {
-      if (sender.track) {
-        sender.track.stop();
-      }
-    });
-
     if (peerConnection.current) {
+      peerConnection.current.getSenders().forEach((sender) => {
+        if (sender.track) {
+          sender.track.stop();
+        }
+      });
       peerConnection.current.close();
     }
 
     setIsSessionActive(false);
     setDataChannel(null);
     peerConnection.current = null;
+    setStatus("idle");
+    setMessages([]);
   }
 
   // Send a message to the model
@@ -96,6 +115,9 @@ export default function App() {
 
   // Send a text message to the model
   function sendTextMessage(message) {
+    // Update local state to show user message immediately
+    setMessages(prev => [...prev, { role: "user", content: message }]);
+    
     const event = {
       type: "conversation.item.create",
       item: {
@@ -110,59 +132,86 @@ export default function App() {
       },
     };
 
+    setStatus("sending");
     sendClientEvent(event);
     sendClientEvent({ type: "response.create" });
   }
+
+  // Process events to extract messages and status
+  useEffect(() => {
+    if (events.length === 0) return;
+
+    const latestEvent = events[0];
+
+    // Update status based on event types
+    if (latestEvent.type === "response.content_part.added") {
+      setStatus("responding");
+    } else if (latestEvent.type === "response.done") {
+      setStatus("idle");
+    } else if (latestEvent.type === "conversation.item.created" && 
+               latestEvent.item.role === "assistant") {
+      // Extract completed assistant message
+      const assistantContent = latestEvent.item.content;
+      const textContent = assistantContent
+        .filter(part => part.type === "text")
+        .map(part => part.text)
+        .join("");
+      
+      if (textContent) {
+        setMessages(prev => [...prev, { role: "assistant", content: textContent }]);
+      }
+    } else if (latestEvent.type === "audio_transcript.delta") {
+      setStatus("listening");
+    }
+  }, [events]);
 
   // Attach event listeners to the data channel when a new one is created
   useEffect(() => {
     if (dataChannel) {
       // Append new server events to the list
       dataChannel.addEventListener("message", (e) => {
-        setEvents((prev) => [JSON.parse(e.data), ...prev]);
+        const eventData = JSON.parse(e.data);
+        setEvents((prev) => [eventData, ...prev]);
       });
 
       // Set session active when the data channel is opened
       dataChannel.addEventListener("open", () => {
         setIsSessionActive(true);
         setEvents([]);
+        setStatus("connected");
+      });
+
+      dataChannel.addEventListener("close", () => {
+        setIsSessionActive(false);
+        setStatus("idle");
       });
     }
   }, [dataChannel]);
 
   return (
-    <>
-      <nav className="absolute top-0 left-0 right-0 h-16 flex items-center">
-        <div className="flex items-center gap-4 w-full m-4 pb-2 border-0 border-b border-solid border-gray-200">
-          <img style={{ width: "24px" }} src={logo} />
-          <h1>学校のシチュエーション　さき</h1>
+    <div className="flex flex-col h-full">
+      <nav className="h-16 flex items-center border-b border-gray-200">
+        <div className="flex items-center gap-4 w-full mx-4">
+          <img className="w-6 h-6" src={logo} alt="OpenAI Logo" />
+          <h1 className="text-lg">学校のシチュエーション さき</h1>
         </div>
       </nav>
-      <main className="absolute top-16 left-0 right-0 bottom-0">
-        <section className="absolute top-0 left-0 right-[380px] bottom-0 flex">
-          <section className="absolute top-0 left-0 right-0 bottom-32 px-4 overflow-y-auto">
-            <EventLog events={events} />
-          </section>
-          <section className="absolute h-32 left-0 right-0 bottom-0 p-4">
-            <SessionControls
-              startSession={startSession}
-              stopSession={stopSession}
-              sendClientEvent={sendClientEvent}
-              sendTextMessage={sendTextMessage}
-              events={events}
-              isSessionActive={isSessionActive}
-            />
-          </section>
-        </section>
-        <section className="absolute top-0 w-[380px] right-0 bottom-0 p-4 pt-0 overflow-y-auto">
-          <ToolPanel
-            sendClientEvent={sendClientEvent}
+      
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-hidden relative">
+          <ConversationDisplay messages={messages} status={status} />
+        </div>
+        
+        <div className="h-20 p-2 border-t border-gray-200">
+          <SessionControls
+            startSession={startSession}
+            stopSession={stopSession}
             sendTextMessage={sendTextMessage}
-            events={events}
             isSessionActive={isSessionActive}
+            status={status}
           />
-        </section>
+        </div>
       </main>
-    </>
+    </div>
   );
 }

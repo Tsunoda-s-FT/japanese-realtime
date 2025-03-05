@@ -9,6 +9,10 @@ https://tailwindcss.com/docs/preflight
 :root {
   --color-base: #efefef;
   --color-highlight: #ff80ff;
+  --color-user-bubble: #e1f5fe;
+  --color-ai-bubble: #f5f5f5;
+  --color-user-text: #000000;
+  --color-ai-text: #000000;
 }
 
 html,
@@ -18,7 +22,49 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: "Consolas", "Andale Mono", monospace;
-  font-size: 0.9rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
   background-color: var(--color-base);
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, button {
+  font-size: 16px; /* Prevents zoom on iOS */
+}
+
+.conversation-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.message-bubble {
+  max-width: 80%;
+  padding: 12px;
+  border-radius: 18px;
+  word-break: break-word;
+}
+
+.user-message {
+  align-self: flex-end;
+  background-color: var(--color-user-bubble);
+  color: var(--color-user-text);
+  border-bottom-right-radius: 4px;
+}
+
+.ai-message {
+  align-self: flex-start;
+  background-color: var(--color-ai-bubble);
+  color: var(--color-ai-text);
+  border-bottom-left-radius: 4px;
+}
+
+.status-indicator {
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+  padding: 8px;
+  font-style: italic;
 }
