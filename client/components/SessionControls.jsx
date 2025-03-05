@@ -1,17 +1,17 @@
-import { useState } from "react";
-import { CloudLightning, CloudOff, MessageSquare, Mic } from "react-feather";
+import { useState, useRef } from "react";
+import { MessageCircle, CloudOff, Mic, Play, Send } from "react-feather";
 import Button from "./Button";
 
 function SessionStopped({ startSession, status }) {
   const isConnecting = status === "connecting";
 
   return (
-    <div className="flex items-center justify-center w-full h-full">
+    <div className="flex justify-center w-full">
       <Button
         onClick={startSession}
-        className={isConnecting ? "bg-gray-600" : "bg-blue-500"}
+        variant={isConnecting ? "secondary" : "primary"}
         disabled={isConnecting}
-        icon={<CloudLightning height={20} />}
+        icon={isConnecting ? <MessageCircle className="animate-pulse" /> : <Play />}
       >
         {isConnecting ? "接続中..." : "会話を開始"}
       </Button>
@@ -21,40 +21,51 @@ function SessionStopped({ startSession, status }) {
 
 function SessionActive({ stopSession, sendTextMessage, status }) {
   const [message, setMessage] = useState("");
+  const inputRef = useRef(null);
   const isBusy = status === "sending" || status === "listening";
 
-  function handleSendClientEvent() {
-    if (message.trim()) {
+  function handleSendMessage() {
+    if (message.trim() && !isBusy) {
       sendTextMessage(message);
       setMessage("");
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
     }
   }
 
   return (
-    <div className="flex items-center justify-center w-full h-full gap-2">
+    <div className="flex items-center w-full gap-2">
       <input
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && message.trim() && !isBusy) {
-            handleSendClientEvent();
-          }
-        }}
+        ref={inputRef}
         type="text"
         placeholder="メッセージを入力..."
-        className="border border-gray-300 rounded-full py-3 px-4 flex-1 text-base"
+        className="flex-1 px-4 py-3 border border-slate-300 rounded-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && message.trim() && !isBusy) {
+            handleSendMessage();
+          }
+        }}
         disabled={isBusy}
       />
+      
       <Button
-        onClick={handleSendClientEvent}
-        icon={<MessageSquare height={20} />}
-        className="bg-blue-500 p-3"
+        onClick={handleSendMessage}
+        variant="primary"
+        size="icon"
         disabled={!message.trim() || isBusy}
+        icon={<Send />}
+        aria-label="送信"
       />
+      
       <Button 
         onClick={stopSession} 
-        icon={<CloudOff height={20} />}
-        className="bg-gray-600 p-3" 
+        variant="secondary"
+        size="icon"
+        icon={<CloudOff />}
+        aria-label="切断"
       />
     </div>
   );
@@ -68,19 +79,17 @@ export default function SessionControls({
   status
 }) {
   return (
-    <div className="flex gap-2 h-full">
-      {isSessionActive ? (
-        <SessionActive
-          stopSession={stopSession}
-          sendTextMessage={sendTextMessage}
-          status={status}
-        />
-      ) : (
-        <SessionStopped 
-          startSession={startSession} 
-          status={status}
-        />
-      )}
-    </div>
+    isSessionActive ? (
+      <SessionActive
+        stopSession={stopSession}
+        sendTextMessage={sendTextMessage}
+        status={status}
+      />
+    ) : (
+      <SessionStopped 
+        startSession={startSession} 
+        status={status}
+      />
+    )
   );
 }

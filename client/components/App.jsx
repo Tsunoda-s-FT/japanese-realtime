@@ -14,42 +14,42 @@ export default function App() {
 
   async function startSession() {
     setStatus("connecting");
-    // Get an ephemeral key from the Fastify server
-    const tokenResponse = await fetch("/token");
-    const data = await tokenResponse.json();
-    const EPHEMERAL_KEY = data.client_secret.value;
-
-    // Create a peer connection
-    const pc = new RTCPeerConnection();
-
-    // Set up to play remote audio from the model
-    audioElement.current = document.createElement("audio");
-    audioElement.current.autoplay = true;
-    pc.ontrack = (e) => (audioElement.current.srcObject = e.streams[0]);
-
-    // Add local audio track for microphone input in the browser
     try {
-      const ms = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      pc.addTrack(ms.getTracks()[0]);
-    } catch (error) {
-      console.error("Error accessing microphone:", error);
-      setStatus("error");
-      return;
-    }
+      // Get an ephemeral key from the server
+      const tokenResponse = await fetch("/token");
+      const data = await tokenResponse.json();
+      const EPHEMERAL_KEY = data.client_secret.value;
 
-    // Set up data channel for sending and receiving events
-    const dc = pc.createDataChannel("oai-events");
-    setDataChannel(dc);
+      // Create a peer connection
+      const pc = new RTCPeerConnection();
 
-    // Start the session using the Session Description Protocol (SDP)
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      // Set up to play remote audio from the model
+      audioElement.current = document.createElement("audio");
+      audioElement.current.autoplay = true;
+      pc.ontrack = (e) => (audioElement.current.srcObject = e.streams[0]);
 
-    const baseUrl = "https://api.openai.com/v1/realtime";
-    const model = "gpt-4o-realtime-preview-2024-12-17";
-    try {
+      // Add local audio track for microphone input
+      try {
+        const ms = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        pc.addTrack(ms.getTracks()[0]);
+      } catch (error) {
+        console.error("Error accessing microphone:", error);
+        setStatus("error");
+        return;
+      }
+
+      // Set up data channel for sending and receiving events
+      const dc = pc.createDataChannel("oai-events");
+      setDataChannel(dc);
+
+      // Start the session using SDP
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const baseUrl = "https://api.openai.com/v1/realtime";
+      const model = "gpt-4o-realtime-preview-2024-12-17";
       const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
         method: "POST",
         body: offer.sdp,
@@ -60,7 +60,7 @@ export default function App() {
       });
 
       if (!sdpResponse.ok) {
-        throw new Error(`Server response: ${sdpResponse.status}`);
+        throw new Error(`サーバーエラー: ${sdpResponse.status}`);
       }
 
       const answer = {
@@ -71,13 +71,12 @@ export default function App() {
 
       peerConnection.current = pc;
     } catch (error) {
-      console.error("Connection error:", error);
+      console.error("接続エラー:", error);
       setStatus("error");
-      return;
     }
   }
 
-  // Stop current session, clean up peer connection and data channel
+  // Stop current session and clean up
   function stopSession() {
     if (dataChannel) {
       dataChannel.close();
@@ -106,16 +105,13 @@ export default function App() {
       dataChannel.send(JSON.stringify(message));
       setEvents((prev) => [message, ...prev]);
     } else {
-      console.error(
-        "Failed to send message - no data channel available",
-        message,
-      );
+      console.error("データチャネルがありません", message);
     }
   }
 
   // Send a text message to the model
   function sendTextMessage(message) {
-    // Update local state to show user message immediately
+    // Update local state immediately
     setMessages(prev => [...prev, { role: "user", content: message }]);
     
     const event = {
@@ -137,109 +133,182 @@ export default function App() {
     sendClientEvent({ type: "response.create" });
   }
 
-  // Process events to extract messages and status
+  // Attach event listeners to the data channel
   useEffect(() => {
-    if (events.length === 0) return;
-
-    const latestEvent = events[0];
-    console.log("Processing event:", latestEvent.type);
-
-    // Update status based on event types
-    if (latestEvent.type === "response.content_part.added") {
-      setStatus("responding");
-      
-      // 個別のテキスト部分を抽出して追加
-      if (latestEvent.content_part && latestEvent.content_part.type === "text") {
-        const newText = latestEvent.content_part.text;
+    if (!dataChannel) return;
+    
+    const handleMessage = (e) => {
+      try {
+        const eventData = JSON.parse(e.data);
+        console.log("RECEIVED EVENT:", eventData.type, eventData);
         
-        setMessages(prev => {
-          const lastMessage = prev[prev.length - 1];
+        // 特定のイベントを直接処理
+        if (eventData.type === "response.audio_transcript.done") {
+          console.log("***** 文字起こし完了イベント受信 *****", eventData.transcript);
           
-          // 最後のメッセージがアシスタントのメッセージならそれを更新、なければ新規作成
-          if (lastMessage && lastMessage.role === "assistant") {
-            const updatedMessages = [...prev];
-            updatedMessages[prev.length - 1] = {
-              ...lastMessage,
-              content: lastMessage.content + newText
-            };
-            return updatedMessages;
-          } else {
-            return [...prev, { role: "assistant", content: newText }];
-          }
-        });
-      }
-    } else if (latestEvent.type === "response.done") {
-      setStatus("idle");
-    } else if (latestEvent.type === "conversation.item.created") {
-      // 会話アイテムが作成されたとき（ユーザーまたはアシスタント）
-      if (latestEvent.item && latestEvent.item.role === "assistant") {
-        // アシスタントの完全なメッセージの場合
-        const assistantContent = latestEvent.item.content;
-        if (Array.isArray(assistantContent)) {
-          const textContent = assistantContent
-            .filter(part => part.type === "text")
-            .map(part => part.text)
-            .join("");
-          
-          if (textContent) {
-            // 既存のメッセージを置き換える（重複を避けるため）
+          if (eventData.transcript && eventData.item_id) {
             setMessages(prev => {
-              const withoutLastAssistant = prev.filter(m => m.role !== "assistant");
-              return [...withoutLastAssistant, { role: "assistant", content: textContent }];
+              // 新しいメッセージを作成
+              const newMessage = {
+                role: "assistant",
+                content: eventData.transcript,
+                item_id: eventData.item_id,
+                timestamp: Date.now()
+              };
+              
+              // 既存のメッセージを探索
+              const existingIndex = prev.findIndex(m => m.item_id === eventData.item_id);
+              
+              if (existingIndex >= 0) {
+                // 既存のメッセージを更新
+                const updatedMessages = [...prev];
+                updatedMessages[existingIndex] = newMessage;
+                return updatedMessages;
+              } else {
+                // 新しいメッセージとして追加
+                return [...prev, newMessage];
+              }
             });
           }
         }
-      }
-    } else if (latestEvent.type === "audio_transcript.delta") {
-      setStatus("listening");
-      // 音声文字起こしデータの表示（オプション）
-      if (latestEvent.delta && latestEvent.delta.text) {
-        const transcribedText = latestEvent.delta.text;
-        // 一時的な文字起こしとして表示することも可能
-        console.log("Transcribed:", transcribedText);
-      }
-    }
-  }, [events]);
-
-  // Attach event listeners to the data channel when a new one is created
-  useEffect(() => {
-    if (dataChannel) {
-      // Append new server events to the list
-      dataChannel.addEventListener("message", (e) => {
-        const eventData = JSON.parse(e.data);
-        console.log("Received event:", eventData.type, eventData);
+        
+        // バックアップとして content_part.done も処理
+        else if (eventData.type === "response.content_part.done" && 
+                 eventData.part?.type === "audio" && 
+                 eventData.part?.transcript) {
+          console.log("***** コンテンツパート完了イベント受信 *****", eventData.part.transcript);
+          
+          if (eventData.part.transcript && eventData.item_id) {
+            setMessages(prev => {
+              // 既存のメッセージを探索
+              const existingIndex = prev.findIndex(m => m.item_id === eventData.item_id);
+              
+              // 新しいメッセージを作成
+              const newMessage = {
+                role: "assistant",
+                content: eventData.part.transcript,
+                item_id: eventData.item_id,
+                timestamp: Date.now()
+              };
+              
+              if (existingIndex >= 0) {
+                // 既存のメッセージを更新
+                const updatedMessages = [...prev];
+                updatedMessages[existingIndex] = newMessage;
+                return updatedMessages;
+              } else {
+                // 新しいメッセージとして追加
+                return [...prev, newMessage];
+              }
+            });
+          }
+        }
+        
+        // ユーザーメッセージの処理
+        else if (eventData.type === "conversation.item.created" && 
+                 eventData.item?.role === "user" && 
+                 eventData.item?.content) {
+          
+          const userContent = eventData.item.content;
+          let userText = "";
+          
+          if (Array.isArray(userContent)) {
+            userText = userContent
+              .filter(part => part.type === "text" || part.type === "user_message" || part.type === "input_text")
+              .map(part => part.text || "")
+              .join("");
+          }
+          
+          if (userText) {
+            setMessages(prev => {
+              // 直近のユーザーメッセージと重複しないようにチェック
+              if (prev.length > 0 && 
+                  prev[prev.length - 1].role === "user" && 
+                  prev[prev.length - 1].content === userText) {
+                return prev;
+              }
+              
+              return [...prev, { 
+                role: "user", 
+                content: userText,
+                item_id: eventData.item.id,
+                timestamp: Date.now()
+              }];
+            });
+          }
+        }
+        
+        // 状態の更新
+        if (eventData.type === "input_audio_buffer.speech_started") {
+          setStatus("listening");
+        } else if (eventData.type === "response.content_part.added") {
+          setStatus("responding");
+        } else if (eventData.type === "response.done") {
+          setStatus("idle");
+        }
+        
+        // イベントリストに追加
         setEvents((prev) => [eventData, ...prev]);
-      });
-
-      // Set session active when the data channel is opened
-      dataChannel.addEventListener("open", () => {
-        setIsSessionActive(true);
-        setEvents([]);
-        setStatus("connected");
-      });
-
-      dataChannel.addEventListener("close", () => {
-        setIsSessionActive(false);
-        setStatus("idle");
-      });
-    }
+      } catch (error) {
+        console.error("Error parsing event data:", error);
+      }
+    };
+    
+    const handleOpen = () => {
+      console.log("Data channel opened");
+      setIsSessionActive(true);
+      setEvents([]);
+      setStatus("connected");
+    };
+    
+    const handleClose = () => {
+      console.log("Data channel closed");
+      setIsSessionActive(false);
+      setStatus("idle");
+    };
+    
+    const handleError = (error) => {
+      console.error("Data channel error:", error);
+      setStatus("error");
+    };
+    
+    // Add event listeners
+    dataChannel.addEventListener("message", handleMessage);
+    dataChannel.addEventListener("open", handleOpen);
+    dataChannel.addEventListener("close", handleClose);
+    dataChannel.addEventListener("error", handleError);
+    
+    // Clean up event listeners on unmount
+    return () => {
+      dataChannel.removeEventListener("message", handleMessage);
+      dataChannel.removeEventListener("open", handleOpen);
+      dataChannel.removeEventListener("close", handleClose);
+      dataChannel.removeEventListener("error", handleError);
+    };
   }, [dataChannel]);
 
   return (
-    <div className="flex flex-col h-full">
-      <nav className="h-16 flex items-center border-b border-gray-200">
-        <div className="flex items-center gap-4 w-full mx-4">
+    <div className="flex flex-col h-full bg-slate-50">
+      {/* ヘッダー */}
+      <header className="h-14 flex items-center border-b border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center gap-3 px-4 w-full">
           <img className="w-6 h-6" src={logo} alt="OpenAI Logo" />
-          <h1 className="text-lg">学校のシチュエーション さき</h1>
+          <h1 className="text-lg font-medium text-slate-800">学校のシチュエーション さき</h1>
         </div>
-      </nav>
+      </header>
       
+      {/* メインコンテンツ */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* 会話表示エリア */}
         <div className="flex-1 overflow-hidden relative">
-          <ConversationDisplay messages={messages} status={status} />
+          <ConversationDisplay 
+            messages={messages} 
+            status={status} 
+          />
         </div>
         
-        <div className="h-20 p-2 border-t border-gray-200">
+        {/* 入力コントロールエリア */}
+        <div className="py-3 px-4 border-t border-slate-200 bg-white">
           <SessionControls
             startSession={startSession}
             stopSession={stopSession}
