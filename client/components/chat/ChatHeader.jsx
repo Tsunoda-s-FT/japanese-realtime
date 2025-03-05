@@ -4,7 +4,7 @@ import logo from "/assets/openai-logomark.svg";
 /**
  * チャットヘッダーコンポーネント
  */
-export default function ChatHeader({ title = "学校のシチュエーション さき" }) {
+export default function ChatHeader({ title = "カフェのシチュエーション" }) {
   return (
     <header className="fixed-container top-0 h-14 flex items-center border-b border-slate-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 px-4 w-full">
