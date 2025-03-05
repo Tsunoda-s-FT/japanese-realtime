@@ -142,26 +142,62 @@ export default function App() {
     if (events.length === 0) return;
 
     const latestEvent = events[0];
+    console.log("Processing event:", latestEvent.type);
 
     // Update status based on event types
     if (latestEvent.type === "response.content_part.added") {
       setStatus("responding");
+      
+      // 個別のテキスト部分を抽出して追加
+      if (latestEvent.content_part && latestEvent.content_part.type === "text") {
+        const newText = latestEvent.content_part.text;
+        
+        setMessages(prev => {
+          const lastMessage = prev[prev.length - 1];
+          
+          // 最後のメッセージがアシスタントのメッセージならそれを更新、なければ新規作成
+          if (lastMessage && lastMessage.role === "assistant") {
+            const updatedMessages = [...prev];
+            updatedMessages[prev.length - 1] = {
+              ...lastMessage,
+              content: lastMessage.content + newText
+            };
+            return updatedMessages;
+          } else {
+            return [...prev, { role: "assistant", content: newText }];
+          }
+        });
+      }
     } else if (latestEvent.type === "response.done") {
       setStatus("idle");
-    } else if (latestEvent.type === "conversation.item.created" && 
-               latestEvent.item.role === "assistant") {
-      // Extract completed assistant message
-      const assistantContent = latestEvent.item.content;
-      const textContent = assistantContent
-        .filter(part => part.type === "text")
-        .map(part => part.text)
-        .join("");
-      
-      if (textContent) {
-        setMessages(prev => [...prev, { role: "assistant", content: textContent }]);
+    } else if (latestEvent.type === "conversation.item.created") {
+      // 会話アイテムが作成されたとき（ユーザーまたはアシスタント）
+      if (latestEvent.item && latestEvent.item.role === "assistant") {
+        // アシスタントの完全なメッセージの場合
+        const assistantContent = latestEvent.item.content;
+        if (Array.isArray(assistantContent)) {
+          const textContent = assistantContent
+            .filter(part => part.type === "text")
+            .map(part => part.text)
+            .join("");
+          
+          if (textContent) {
+            // 既存のメッセージを置き換える（重複を避けるため）
+            setMessages(prev => {
+              const withoutLastAssistant = prev.filter(m => m.role !== "assistant");
+              return [...withoutLastAssistant, { role: "assistant", content: textContent }];
+            });
+          }
+        }
       }
     } else if (latestEvent.type === "audio_transcript.delta") {
       setStatus("listening");
+      // 音声文字起こしデータの表示（オプション）
+      if (latestEvent.delta && latestEvent.delta.text) {
+        const transcribedText = latestEvent.delta.text;
+        // 一時的な文字起こしとして表示することも可能
+        console.log("Transcribed:", transcribedText);
+      }
     }
   }, [events]);
 
@@ -171,6 +207,7 @@ export default function App() {
       // Append new server events to the list
       dataChannel.addEventListener("message", (e) => {
         const eventData = JSON.parse(e.data);
+        console.log("Received event:", eventData.type, eventData);
         setEvents((prev) => [eventData, ...prev]);
       });
 

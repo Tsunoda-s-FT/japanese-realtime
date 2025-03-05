@@ -5,10 +5,10 @@ const statusMessages = {
   idle: null,
   connecting: "接続中...",
   connected: "接続しました",
-  listening: "聞き取り中...",
-  sending: "送信中...",
-  responding: "返答中...",
-  error: "エラーが発生しました"
+  listening: "聞き取り中... 🎤",
+  sending: "送信中... ⏳",
+  responding: "返答中... 💬",
+  error: "エラーが発生しました ❌"
 };
 
 export default function ConversationDisplay({ messages, status }) {
