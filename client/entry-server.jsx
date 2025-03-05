@@ -1,11 +1,11 @@
 import { StrictMode } from "react";
 import { renderToString } from "react-dom/server";
-import App from "./components/App";
+import ChatPage from "./pages/ChatPage";
 
 export function render() {
   const html = renderToString(
     <StrictMode>
-      <App />
+      <ChatPage />
     </StrictMode>,
   );
   return { html };

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import logo from "/assets/openai-logomark.svg";
-import SessionControls from "./SessionControls";
-import ConversationDisplay from "./ConversationDisplay";
+import { useState, useRef, useEffect } from "react";
 
-export default function App() {
+/**
+ * OpenAI Realtime API との WebRTC 接続を管理するカスタムフック
+ */
+export default function useRealtime() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [events, setEvents] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -12,39 +12,40 @@ export default function App() {
   const peerConnection = useRef(null);
   const audioElement = useRef(null);
 
+  // セッション開始
   async function startSession() {
     setStatus("connecting");
     try {
-      // Get an ephemeral key from the server
+      // サーバーからの一時的なトークンを取得
       const tokenResponse = await fetch("/token");
       const data = await tokenResponse.json();
       const EPHEMERAL_KEY = data.client_secret.value;
 
-      // Create a peer connection
+      // WebRTC ピア接続の作成
       const pc = new RTCPeerConnection();
 
-      // Set up to play remote audio from the model
+      // AIからの音声を再生するためのオーディオ要素を設定
       audioElement.current = document.createElement("audio");
       audioElement.current.autoplay = true;
       pc.ontrack = (e) => (audioElement.current.srcObject = e.streams[0]);
 
-      // Add local audio track for microphone input
+      // マイク入力用のローカルオーディオトラックを追加
       try {
         const ms = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
         pc.addTrack(ms.getTracks()[0]);
       } catch (error) {
-        console.error("Error accessing microphone:", error);
+        console.error("マイクへのアクセスエラー:", error);
         setStatus("error");
         return;
       }
 
-      // Set up data channel for sending and receiving events
+      // イベント送受信用のデータチャネルを設定
       const dc = pc.createDataChannel("oai-events");
       setDataChannel(dc);
 
-      // Start the session using SDP
+      // SDP を使用してセッションを開始
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
@@ -76,7 +77,7 @@ export default function App() {
     }
   }
 
-  // Stop current session and clean up
+  // セッションの停止とクリーンアップ
   function stopSession() {
     if (dataChannel) {
       dataChannel.close();
@@ -98,7 +99,7 @@ export default function App() {
     setMessages([]);
   }
 
-  // Send a message to the model
+  // モデルにイベントを送信
   function sendClientEvent(message) {
     if (dataChannel) {
       message.event_id = message.event_id || crypto.randomUUID();
@@ -109,10 +110,10 @@ export default function App() {
     }
   }
 
-  // Send a text message to the model
+  // テキストメッセージを送信
   function sendTextMessage(message) {
-    // Update local state immediately
-    setMessages(prev => [...prev, { role: "user", content: message }]);
+    // ローカル状態をすぐに更新
+    setMessages(prev => [...prev, { role: "user", content: message, timestamp: Date.now() }]);
     
     const event = {
       type: "conversation.item.create",
@@ -133,7 +134,7 @@ export default function App() {
     sendClientEvent({ type: "response.create" });
   }
 
-  // Attach event listeners to the data channel
+  // データチャネルのイベントリスナーを設定
   useEffect(() => {
     if (!dataChannel) return;
     
@@ -250,35 +251,35 @@ export default function App() {
         // イベントリストに追加
         setEvents((prev) => [eventData, ...prev]);
       } catch (error) {
-        console.error("Error parsing event data:", error);
+        console.error("イベントデータの解析エラー:", error);
       }
     };
     
     const handleOpen = () => {
-      console.log("Data channel opened");
+      console.log("データチャネルが開かれました");
       setIsSessionActive(true);
       setEvents([]);
       setStatus("connected");
     };
     
     const handleClose = () => {
-      console.log("Data channel closed");
+      console.log("データチャネルが閉じられました");
       setIsSessionActive(false);
       setStatus("idle");
     };
     
     const handleError = (error) => {
-      console.error("Data channel error:", error);
+      console.error("データチャネルエラー:", error);
       setStatus("error");
     };
     
-    // Add event listeners
+    // イベントリスナーの追加
     dataChannel.addEventListener("message", handleMessage);
     dataChannel.addEventListener("open", handleOpen);
     dataChannel.addEventListener("close", handleClose);
     dataChannel.addEventListener("error", handleError);
     
-    // Clean up event listeners on unmount
+    // アンマウント時のイベントリスナーのクリーンアップ
     return () => {
       dataChannel.removeEventListener("message", handleMessage);
       dataChannel.removeEventListener("open", handleOpen);
@@ -287,37 +288,13 @@ export default function App() {
     };
   }, [dataChannel]);
 
-  return (
-    <div className="flex flex-col h-full bg-slate-50">
-      {/* ヘッダー */}
-      <header className="h-14 flex items-center border-b border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center gap-3 px-4 w-full">
-          <img className="w-6 h-6" src={logo} alt="OpenAI Logo" />
-          <h1 className="text-lg font-medium text-slate-800">学校のシチュエーション さき</h1>
-        </div>
-      </header>
-      
-      {/* メインコンテンツ */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* 会話表示エリア */}
-        <div className="flex-1 overflow-hidden relative">
-          <ConversationDisplay 
-            messages={messages} 
-            status={status} 
-          />
-        </div>
-        
-        {/* 入力コントロールエリア */}
-        <div className="py-3 px-4 border-t border-slate-200 bg-white">
-          <SessionControls
-            startSession={startSession}
-            stopSession={stopSession}
-            sendTextMessage={sendTextMessage}
-            isSessionActive={isSessionActive}
-            status={status}
-          />
-        </div>
-      </main>
-    </div>
-  );
+  return {
+    isSessionActive,
+    messages,
+    status,
+    events,
+    startSession,
+    stopSession,
+    sendTextMessage
+  };
 }

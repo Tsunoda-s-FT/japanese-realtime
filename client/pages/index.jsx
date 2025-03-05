@@ -1,5 +1,5 @@
-import App from "../components/App";
+import ChatPage from "./ChatPage";
 
 export default function Index() {
-  return <App />;
+  return <ChatPage />;
 }

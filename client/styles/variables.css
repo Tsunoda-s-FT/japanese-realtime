@@ -1,0 +1,63 @@
+:root {
+    /* カラーパレット */
+    --color-primary: #3b82f6;
+    --color-primary-dark: #2563eb;
+    --color-primary-light: #93c5fd;
+    --color-secondary: #64748b;
+    --color-secondary-dark: #475569;
+    --color-secondary-light: #94a3b8;
+    --color-danger: #ef4444;
+    --color-danger-dark: #dc2626;
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-info: #3b82f6;
+  
+    /* 背景色 */
+    --color-background: #f8fafc;
+    --color-background-alt: #f1f5f9;
+    
+    /* コンテンツ背景 */
+    --color-surface: #ffffff;
+    --color-user-bubble: #e1f5fe;
+    --color-ai-bubble: #f5f7f9;
+    
+    /* テキスト色 */
+    --color-text-primary: #1e293b;
+    --color-text-secondary: #64748b;
+    --color-text-placeholder: #94a3b8;
+    --color-text-disabled: #cbd5e1;
+    --color-text-link: #2563eb;
+    --color-text-light: #f8fafc;
+    
+    /* ボーダー */
+    --color-border: #e2e8f0;
+    --color-border-light: #f1f5f9;
+    --color-border-focus: #3b82f6;
+    
+    /* フォント */
+    --font-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-size-xs: 0.75rem;   /* 12px */
+    --font-size-sm: 0.875rem;  /* 14px */
+    --font-size-base: 1rem;    /* 16px */
+    --font-size-lg: 1.125rem;  /* 18px */
+    --font-size-xl: 1.25rem;   /* 20px */
+    
+    /* スペーシング */
+    --spacing-xs: 0.25rem;     /* 4px */
+    --spacing-sm: 0.5rem;      /* 8px */
+    --spacing-md: 1rem;        /* 16px */
+    --spacing-lg: 1.5rem;      /* 24px */
+    --spacing-xl: 2rem;        /* 32px */
+    
+    /* その他 */
+    --border-radius-sm: 0.25rem;     /* 4px */
+    --border-radius-md: 0.5rem;      /* 8px */
+    --border-radius-lg: 0.75rem;     /* 12px */
+    --border-radius-xl: 1rem;        /* 16px */
+    --border-radius-full: 9999px;
+    
+    /* レイアウト */
+    --header-height: 3.5rem;           /* 56px */
+    --input-bar-height: 4.5rem;        /* 72px */
+    --chat-max-width: 48rem;           /* 768px */
+  }

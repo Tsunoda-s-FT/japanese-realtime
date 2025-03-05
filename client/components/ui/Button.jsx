@@ -2,15 +2,6 @@ import React from "react";
 
 /**
  * 汎用ボタンコンポーネント
- * @param {Object} props コンポーネントプロパティ
- * @param {React.ReactNode} props.children ボタンの子要素
- * @param {React.ReactNode} props.icon アイコン要素
- * @param {Function} props.onClick クリックハンドラ
- * @param {'primary'|'secondary'|'danger'|'ghost'} props.variant ボタンのバリアント
- * @param {'default'|'sm'|'lg'|'icon'} props.size ボタンのサイズ
- * @param {boolean} props.disabled 無効化状態
- * @param {boolean} props.fullWidth 幅100%とするか
- * @param {string} props.className 追加のCSS classes
  */
 export default function Button({ 
   children, 
